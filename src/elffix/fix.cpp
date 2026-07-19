@@ -46,9 +46,19 @@ static void _fix_relative_rebase(char *buffer, size_t bufSize,
     }
     // unsigned sym = (unsigned)ELF32_R_SYM(rel->r_info);
     if (type == R_ARM_RELATIVE || (!isElf32 && type == 1027)) {
-      //被Releative修正的地址需要减回装载地址才可以得出原本的Releative偏移
-      Elf_Addr_Type off = rel->r_offset;
-      unsigned *offIntBuf = (unsigned *)(buffer + off);
+        Elf_Addr_Type off = rel->r_offset;
+      
+      // Protecao extra contra Segfault
+        if (buffer + off + 8 > border) continue;
+
+        if (isElf32) {
+            uint32_t *offIntBuf = (uint32_t *)(buffer + off);
+            *offIntBuf -= (uint32_t)imageBase;
+        } else {
+            uint64_t *offIntBuf = (uint64_t *)(buffer + off);
+            *offIntBuf -= imageBase;
+        }
+      }
       if (border < (const char *)offIntBuf) {
         uint64_t tmp = off;
         printf("relocation off %" PRIx64 " invalid, out of border...\n", tmp);
@@ -363,7 +373,10 @@ static void _regen_section_header(const Elf_Ehdr_Type *pehdr,
       break;
     }
   }
-  size_t relpltCount = g_shdr[RELPLT].sh_size / g_shdr[RELPLT].sh_entsize;
+  size_t relpltCount = 0;
+  if (g_shdr[RELPLT].sh_entsize != 0) {
+      relpltCount = g_shdr[RELPLT].sh_size / g_shdr[RELPLT].sh_entsize;
+  }
   if (__global_offset_table) {
     Elf_Word_Type gotBase = g_shdr[GOT].sh_addr;
 
@@ -413,6 +426,7 @@ static void _regen_section_header(const Elf_Ehdr_Type *pehdr,
     Elf_Sym_Type *sym = (Elf_Sym_Type *)symbase;
     while (1) {
       //符号在符号表里面的偏移，不用考虑文件与内存加载之间bias
+      if ((const char*)(sym + 1) > buffer + len) break;
       size_t off = sym->st_name;
       const char *symName = strbase + off;
       size_t symOff = sym->st_value;
@@ -496,7 +510,10 @@ static void _regen_section_header(const Elf_Ehdr_Type *pehdr,
   g_shdr[STRTAB].sh_addralign = 1;
 
   Elf_Rel_Type *relDyn = (Elf_Rel_Type *)(buffer + g_shdr[RELDYN].sh_addr);
-  size_t relCount = g_shdr[RELDYN].sh_size / g_shdr[RELDYN].sh_entsize;
+  size_t relCount = 0;
+  if (g_shdr[RELDYN].sh_entsize != 0) {
+      relCount = g_shdr[RELDYN].sh_size / g_shdr[RELDYN].sh_entsize;
+  }
   _fix_rel_bias<Elf_Rel_Type, isElf32>(relDyn, relCount, bias);
 
   Elf_Rel_Type *relPlt = (Elf_Rel_Type *)(buffer + g_shdr[RELPLT].sh_addr);
