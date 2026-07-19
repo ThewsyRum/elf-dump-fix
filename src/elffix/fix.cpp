@@ -205,6 +205,16 @@ static void _regen_section_header(const Elf_Ehdr_Type *pehdr,
   int nDynSyms = 0;
   for (int i = 0; i < n; i++) {
     int tag = dyn[i].d_tag;
+    if (tag == DT_SYMTAB || tag == DT_STRTAB || tag == DT_HASH ||
+        tag == DT_REL || tag == DT_RELA || tag == DT_JMPREL ||
+        tag == DT_FINI_ARRAY || tag == DT_INIT_ARRAY || tag == DT_PLTGOT || tag == DT_INIT) {
+
+        if (ptrbase > 0 && dyn[i].d_un.d_ptr >= ptrbase) {
+            dyn[i].d_un.d_ptr -= ptrbase; 
+        } else {
+            dyn[i].d_un.d_ptr -= bias;
+        }
+    }
     switch (tag) {
     case DT_SYMTAB:
       dyn[i].d_un.d_ptr -= bias;
