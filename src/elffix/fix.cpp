@@ -30,43 +30,41 @@ static long _get_file_len(FILE *p) {
 
 template <typename Elf_Shdr_Type, typename Elf_Addr_Type, typename Elf_Rel_Type,
           bool isElf32>
+template <typename Elf_Shdr_Type, typename Elf_Addr_Type, typename Elf_Rel_Type,
+          bool isElf32>
 static void _fix_relative_rebase(char *buffer, size_t bufSize,
                                  uint64_t imageBase, Elf_Shdr_Type *g_shdr) {
   Elf_Addr_Type addr = g_shdr[RELDYN].sh_addr;
   size_t sz = g_shdr[RELDYN].sh_size;
+  if (sz == 0) return; // Evita divisão por zero
+  
   size_t n = sz / sizeof(Elf_Rel_Type);
   Elf_Rel_Type *rel = (Elf_Rel_Type *)(buffer + addr);
   const char *border = buffer + bufSize;
+  
   for (size_t i = 0; i < n; ++i, ++rel) {
     int type = 0;
     if (isElf32) {
       type = ELF32_R_TYPE(rel->r_info);
     } else {
-      type = ELF64_R_TYPE(rel->r_info);
+      // O cast para (uint64_t) evita o warning de shift do compilador
+      type = ELF64_R_TYPE((uint64_t)rel->r_info);
     }
-    // unsigned sym = (unsigned)ELF32_R_SYM(rel->r_info);
+    
     if (type == R_ARM_RELATIVE || (!isElf32 && type == 1027)) {
-        Elf_Addr_Type off = rel->r_offset;
+      Elf_Addr_Type off = rel->r_offset;
       
-      // Protecao extra contra Segfault
-        if (buffer + off + 8 > border) continue;
+      // Protecao extra contra Segfault (Buffer overflow)
+      if (buffer + off + 8 > border) continue;
 
-        if (isElf32) {
-            uint32_t *offIntBuf = (uint32_t *)(buffer + off);
-            *offIntBuf -= (uint32_t)imageBase;
-        } else {
-            uint64_t *offIntBuf = (uint64_t *)(buffer + off);
-            *offIntBuf -= imageBase;
-        }
+      // Realoca o endereco absoluto para offset novamente mantendo os 64-bits reais
+      if (isElf32) {
+          uint32_t *offIntBuf = (uint32_t *)(buffer + off);
+          *offIntBuf -= (uint32_t)imageBase;
+      } else {
+          uint64_t *offIntBuf = (uint64_t *)(buffer + off);
+          *offIntBuf -= imageBase;
       }
-      if (border < (const char *)offIntBuf) {
-        uint64_t tmp = off;
-        printf("relocation off %" PRIx64 " invalid, out of border...\n", tmp);
-        continue;
-      }
-      unsigned addrNow = *offIntBuf;
-      addrNow -= imageBase;
-      (*offIntBuf) = addrNow;
     }
   }
 }
@@ -84,6 +82,7 @@ uint32_t _get_mem_flag(Elf_Phdr_Type *phdr, size_t phNum, size_t memAddr) {
 }
 
 template <typename Elf_Rel_Type, bool isElf32>
+template <typename Elf_Rel_Type, bool isElf32>
 static void _fix_rel_bias(Elf_Rel_Type *relDyn, size_t relCount, size_t bias) {
   const int R_AARCH64_JUMP_SLOT = 1026;
   const int R_AARCH64_RELATIVE = 1027;
@@ -94,10 +93,11 @@ static void _fix_rel_bias(Elf_Rel_Type *relDyn, size_t relCount, size_t bias) {
       type = ELF32_R_TYPE(relDyn[i].r_info);
       sym = ELF32_R_SYM(relDyn[i].r_info);
     } else {
-      type = ELF64_R_TYPE(relDyn[i].r_info);
-      sym = ELF64_R_SYM(relDyn[i].r_info);
+      // Adicionado (uint64_t) para calar o warning do Clang no Termux
+      type = ELF64_R_TYPE((uint64_t)relDyn[i].r_info);
+      sym = ELF64_R_SYM((uint64_t)relDyn[i].r_info);
     }
-    //这两种重定位地址都是相对于loadAddr的，所以要修正
+    
     if (type == R_ARM_JUMP_SLOT || type == R_ARM_RELATIVE ||
         type == R_AARCH64_JUMP_SLOT || type == R_AARCH64_RELATIVE) {
       if (relDyn[i].r_offset > 0) {
