@@ -45,7 +45,7 @@ static void _fix_relative_rebase(char *buffer, size_t bufSize,
       type = ELF64_R_TYPE(rel->r_info);
     }
     // unsigned sym = (unsigned)ELF32_R_SYM(rel->r_info);
-    if (type == R_ARM_RELATIVE) {
+    if (type == R_ARM_RELATIVE || (!isElf32 && type == 1027)) {
       //被Releative修正的地址需要减回装载地址才可以得出原本的Releative偏移
       Elf_Addr_Type off = rel->r_offset;
       unsigned *offIntBuf = (unsigned *)(buffer + off);
@@ -217,7 +217,6 @@ static void _regen_section_header(const Elf_Ehdr_Type *pehdr,
     }
     switch (tag) {
     case DT_SYMTAB:
-      dyn[i].d_un.d_ptr -= bias;
       g_shdr[DYNSYM].sh_name = _get_off_in_shstrtab(".dynsym");
       g_shdr[DYNSYM].sh_type = SHT_DYNSYM;
       g_shdr[DYNSYM].sh_flags = SHF_ALLOC;
@@ -232,7 +231,6 @@ static void _regen_section_header(const Elf_Ehdr_Type *pehdr,
       break;
 
     case DT_STRTAB:
-      dyn[i].d_un.d_ptr -= bias;
       g_shdr[DYNSTR].sh_name = _get_off_in_shstrtab(".dynstr");
       g_shdr[DYNSTR].sh_type = SHT_STRTAB;
       g_shdr[DYNSTR].sh_flags = SHF_ALLOC;
@@ -247,7 +245,6 @@ static void _regen_section_header(const Elf_Ehdr_Type *pehdr,
       break;
 
     case DT_HASH: {
-      dyn[i].d_un.d_ptr -= bias;
       int nbucket = 0, nchain = 0;
       g_shdr[HASH].sh_name = _get_off_in_shstrtab(".hash");
       g_shdr[HASH].sh_type = SHT_HASH;
@@ -267,7 +264,6 @@ static void _regen_section_header(const Elf_Ehdr_Type *pehdr,
     }
     case DT_REL:
     case DT_RELA: {
-      dyn[i].d_un.d_ptr -= bias;
       g_shdr[RELDYN].sh_flags = SHF_ALLOC;
       g_shdr[RELDYN].sh_addr = dyn[i].d_un.d_ptr;
       g_shdr[RELDYN].sh_offset = dyn[i].d_un.d_ptr;
@@ -296,7 +292,6 @@ static void _regen_section_header(const Elf_Ehdr_Type *pehdr,
       break;
 
     case DT_JMPREL:
-      dyn[i].d_un.d_ptr -= bias;
       g_shdr[RELPLT].sh_flags = SHF_ALLOC;
       g_shdr[RELPLT].sh_addr = dyn[i].d_un.d_ptr;
       g_shdr[RELPLT].sh_offset = dyn[i].d_un.d_ptr;
@@ -318,7 +313,6 @@ static void _regen_section_header(const Elf_Ehdr_Type *pehdr,
       break;
 
     case DT_FINI_ARRAY:
-      dyn[i].d_un.d_ptr -= bias;
       g_shdr[FINIARRAY].sh_name = _get_off_in_shstrtab(".fini_array");
       g_shdr[FINIARRAY].sh_type = 15;
       g_shdr[FINIARRAY].sh_flags = SHF_WRITE | SHF_ALLOC;
@@ -333,7 +327,6 @@ static void _regen_section_header(const Elf_Ehdr_Type *pehdr,
       break;
 
     case DT_INIT_ARRAY:
-      dyn[i].d_un.d_ptr -= bias;
       g_shdr[INITARRAY].sh_name = _get_off_in_shstrtab(".init_array");
       g_shdr[INITARRAY].sh_type = 14;
       g_shdr[INITARRAY].sh_flags = SHF_WRITE | SHF_ALLOC;
@@ -348,7 +341,6 @@ static void _regen_section_header(const Elf_Ehdr_Type *pehdr,
       break;
 
     case DT_PLTGOT:
-      dyn[i].d_un.d_ptr -= bias;
       __global_offset_table = dyn[i].d_un.d_ptr;
       g_shdr[GOT].sh_name = _get_off_in_shstrtab(".got");
       g_shdr[GOT].sh_type = SHT_PROGBITS;
@@ -535,7 +527,7 @@ static void _fix_elf(char *buffer, size_t flen, FILE *fw, uint64_t ptrbase) {
   _regen_section_header<Elf_Ehdr_Type, Elf_Shdr_Type, Elf_Phdr_Type,
                         Elf_Word_Type, Elf_Addr_Type, Elf_Sym_Type,
                         Elf_Dyn_Type, Elf_Rel_Type, isElf32>(&ehdr, buffer,
-                                                             flen, g_shdr);
+                                                             flen, g_shdr, ptrbase);
 
   _fix_relative_rebase<Elf_Shdr_Type, Elf_Addr_Type, Elf_Rel_Type, isElf32>(
       buffer, flen, ptrbase, g_shdr);
